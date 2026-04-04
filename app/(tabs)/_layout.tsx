@@ -1,33 +1,66 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { Tabs } from "expo-router";
+import { Platform, Text } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        tabBarStyle: {
+          backgroundColor: "#1E293B",
+          borderTopColor: "#334155",
+          borderTopWidth: 1,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom + 6,
+          paddingTop: 8,
+          elevation: 0,
+        },
+        tabBarActiveTintColor: "#6366F1",
+        tabBarInactiveTintColor: "#64748B",
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: "700",
+          marginTop: 2,
+        },
+      }}
+    >
       <Tabs.Screen
-        name="index"
+        name="home"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: "Feed",
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
+            <Text style={{ fontSize: focused ? 22 : 20, color, lineHeight: 26 }}>🏠</Text>
+          ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="ask"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: "Ask",
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
+            <Text style={{ fontSize: focused ? 22 : 20, color, lineHeight: 26 }}>✏️</Text>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="my-queries"
+        options={{
+          title: "My Queries",
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
+            <Text style={{ fontSize: focused ? 22 : 20, color, lineHeight: 26 }}>📋</Text>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
+            <Text style={{ fontSize: focused ? 22 : 20, color, lineHeight: 26 }}>👤</Text>
+          ),
         }}
       />
     </Tabs>
