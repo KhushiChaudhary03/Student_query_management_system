@@ -1,272 +1,274 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
-  FlatList,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  View, Text, FlatList, TextInput, TouchableOpacity,
+  RefreshControl, Pressable,
 } from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { C, R, S, T } from "../../components/theme";
+import QuestionCard from "../../components/QuestionCard";
+import EmptyState from "../../components/EmptyState";
+import { Avatar } from "../../components/Atoms";
+import { Question } from "../../components/types";
+import { SEED_QUESTIONS } from "../../store/data";
 
-type Query = {
-  id: string;
-  title: string;
-  body: string;
-  author: string;
-  college: string;
-  subject: string;
-  tags: string[];
-  answers: number;
-  votes: number;
-  createdAt: string;
-};
-
-const DUMMY_QUERIES: Query[] = [
-  {
-    id: "1",
-    title: "How to solve integration by parts in calculus?",
-    body: "I am struggling with integration by parts. Can someone explain the LIATE rule with a step-by-step example?",
-    author: "ABC",
-    college: "Delhi University",
-    subject: "Mathematics",
-    tags: ["Calculus", "Integration"],
-    answers: 5,
-    votes: 12,
-    createdAt: "2h ago",
-  },
-  {
-    id: "2",
-    title: "Difference between TCP and UDP protocols?",
-    body: "For my networking exam, I need a clear comparison of TCP vs UDP with real-world examples.",
-    author: "Priya Mehta",
-    college: "IIT Delhi",
-    subject: "Networking",
-    tags: ["TCP", "UDP", "Networking"],
-    answers: 8,
-    votes: 24,
-    createdAt: "4h ago",
-  },
-  {
-    id: "3",
-    title: "Best resources for learning Data Structures?",
-    body: "I'm in 2nd year CSE. Which books or YouTube channels are best for DSA prep?",
-    author: "Arjun Patel",
-    college: "NSIT",
-    subject: "DSA",
-    tags: ["DSA", "Resources", "CSE"],
-    answers: 15,
-    votes: 38,
-    createdAt: "1d ago",
-  },
-  {
-    id: "4",
-    title: "How does Kirchhoff's Voltage Law work?",
-    body: "Can someone explain KVL with a circuit example? I keep getting wrong answers in practice problems.",
-    author: "Sneha Roy",
-    college: "NIT Trichy",
-    subject: "Electrical",
-    tags: ["KVL", "Circuits"],
-    answers: 3,
-    votes: 7,
-    createdAt: "2d ago",
-  },
-  {
-    id: "5",
-    title: "Explain the OSI model layers simply?",
-    body: "I keep confusing the 7 layers. Is there a simple trick to remember them all?",
-    author: "Karan Singh",
-    college: "BITS Pilani",
-    subject: "Networking",
-    tags: ["OSI", "Networking"],
-    answers: 6,
-    votes: 19,
-    createdAt: "3d ago",
-  },
+const FILTERS = [
+  "All",
+  "Mathematics",
+  "Computer Science",
+  "Data Structures",
+  "Computer Networks",
+  "Electrical Engineering",
+  "Physics",
+  "Economics",
 ];
 
-const SUBJECTS = ["All", "Mathematics", "Networking", "DSA", "Electrical", "Physics"];
-
-const SUBJECT_COLORS: Record<string, { bg: string; text: string }> = {
-  Mathematics: { bg: "#F59E0B20", text: "#F59E0B" },
-  Networking:  { bg: "#10B98120", text: "#10B981" },
-  DSA:         { bg: "#6366F120", text: "#818CF8" },
-  Electrical:  { bg: "#EF444420", text: "#EF4444" },
-  Physics:     { bg: "#3B82F620", text: "#3B82F6" },
-  Chemistry:   { bg: "#EC489920", text: "#EC4899" },
-};
-
-function QueryCard({ query }: { query: Query }) {
-  const [voted, setVoted] = useState(false);
-  const color = SUBJECT_COLORS[query.subject] || { bg: "#6366F120", text: "#818CF8" };
-
-  return (
-    <TouchableOpacity
-      style={{ backgroundColor: "#1E293B", borderRadius: 20, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#334155" }}
-      onPress={() => router.push(`/query/${query.id}` as any)}
-      activeOpacity={0.8}
-    >
-      {/* Subject + Time */}
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-        <View style={{ backgroundColor: color.bg, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, marginRight: 8 }}>
-          <Text style={{ color: color.text, fontSize: 11, fontWeight: "bold" }}>{query.subject}</Text>
-        </View>
-        <Text style={{ color: "#64748B", fontSize: 11, marginLeft: "auto" }}>{query.createdAt}</Text>
-      </View>
-
-      {/* Title */}
-      <Text style={{ color: "white", fontWeight: "bold", fontSize: 15, lineHeight: 22, marginBottom: 4 }} numberOfLines={2}>
-        {query.title}
-      </Text>
-
-      {/* Body preview */}
-      <Text style={{ color: "#94A3B8", fontSize: 13, lineHeight: 20, marginBottom: 10 }} numberOfLines={2}>
-        {query.body}
-      </Text>
-
-      {/* Tags */}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10, gap: 6 }}>
-        {query.tags.map((tag) => (
-          <View key={tag} style={{ backgroundColor: "#0F172A", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-            <Text style={{ color: "#94A3B8", fontSize: 11 }}>#{tag}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Divider */}
-      <View style={{ height: 1, backgroundColor: "#334155", marginBottom: 10 }} />
-
-      {/* Footer */}
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#6366F1", alignItems: "center", justifyContent: "center", marginRight: 8 }}>
-          <Text style={{ color: "white", fontSize: 11, fontWeight: "bold" }}>{query.author.charAt(0)}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: "#94A3B8", fontSize: 11 }} numberOfLines={1}>
-            <Text style={{ color: "#818CF8", fontWeight: "600" }}>{query.author}</Text>
-            {"  ·  "}{query.college}
-          </Text>
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4 }} onPress={() => setVoted(!voted)}>
-            <Text style={{ color: voted ? "#6366F1" : "#64748B", fontSize: 14 }}>▲</Text>
-            <Text style={{ color: voted ? "#6366F1" : "#94A3B8", fontSize: 12, fontWeight: "bold" }}>
-              {query.votes + (voted ? 1 : 0)}
-            </Text>
-          </TouchableOpacity>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Text style={{ fontSize: 13 }}>💬</Text>
-            <Text style={{ color: "#94A3B8", fontSize: 12, fontWeight: "bold" }}>{query.answers}</Text>
-          </View>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
+const SORT_OPTIONS = ["Newest", "Most Voted", "Unanswered"];
 
 export default function HomeScreen() {
-  const [search, setSearch] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("All");
-  const [userName, setUserName] = useState("?");
+  const [questions, setQuestions]   = useState<Question[]>(SEED_QUESTIONS);
+  const [search,    setSearch]      = useState("");
+  const [filter,    setFilter]      = useState("All");
+  const [sort,      setSort]        = useState("Newest");
+  const [showSort,  setShowSort]    = useState(false);
+  const [initials,  setInitials]    = useState("?");
+  const [votes,     setVotes]       = useState<Record<string, boolean>>({});
+  const [refreshing,setRefreshing]  = useState(false);
 
-  useEffect(() => {
-    AsyncStorage.getItem("user").then((data) => {
-      if (data) {
-        const user = JSON.parse(data);
-        // Get initials from real user name
-        const initials = user.name
-          ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
-          : "?";
-        setUserName(initials);
-      }
-    });
+  const load = useCallback(async () => {
+    const u = await AsyncStorage.getItem("user");
+    if (u) {
+      const user = JSON.parse(u);
+      setInitials(
+        user.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "?"
+      );
+    }
+    const q = await AsyncStorage.getItem("questions");
+    const userQ: Question[] = q ? JSON.parse(q) : [];
+    setQuestions([...userQ, ...SEED_QUESTIONS]);
   }, []);
 
-  const filtered = DUMMY_QUERIES.filter((q) => {
-    const matchSearch =
-      q.title.toLowerCase().includes(search.toLowerCase()) ||
-      q.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
-    const matchSubject = selectedSubject === "All" || q.subject === selectedSubject;
-    return matchSearch && matchSubject;
-  });
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  // Filter + sort
+  const processed = questions
+    .filter(q => {
+      const s = search.toLowerCase();
+      const matchSearch = !s
+        || q.title.toLowerCase().includes(s)
+        || q.body.toLowerCase().includes(s)
+        || q.tags.some(t => t.toLowerCase().includes(s))
+        || q.author.toLowerCase().includes(s)
+        || q.subject.toLowerCase().includes(s);
+      const matchFilter = filter === "All" || q.subject === filter;
+      return matchSearch && matchFilter;
+    })
+    .sort((a, b) => {
+      if (sort === "Most Voted")  return b.votes - a.votes;
+      if (sort === "Unanswered")  return a.answers - b.answers;
+      return 0; // Newest — already ordered newest first
+    });
+
+  const ListHeader = (
+    <View>
+      {/* ── Ask CTA banner ─────────────────────────────────── */}
+      <TouchableOpacity
+        onPress={() => router.push("/(tabs)/ask" as any)}
+        activeOpacity={0.85}
+        style={{
+          backgroundColor: C.accentDim,
+          borderRadius: R.lg,
+          borderWidth: 1,
+          borderColor: C.accent + "40",
+          padding: S.lg,
+          marginBottom: S.lg,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: S.md,
+        }}
+      >
+        <View style={{
+          width: 42, height: 42, borderRadius: R.md,
+          backgroundColor: C.accent,
+          alignItems: "center", justifyContent: "center",
+          flexShrink: 0,
+        }}>
+          <Text style={{ fontSize: 20 }}>✏️</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: C.t1, fontSize: 14, fontWeight: "700", marginBottom: 2 }}>
+            Have a question?
+          </Text>
+          <Text style={{ color: C.t3, fontSize: 12 }}>
+            Ask the community — get answers fast
+          </Text>
+        </View>
+        <Text style={{ color: C.accent, fontSize: 20 }}>→</Text>
+      </TouchableOpacity>
+
+      {/* ── Sort + count row ───────────────────────────────── */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: S.sm }}>
+        <Text style={{ ...T.label, color: C.t3 }}>
+          {processed.length} {processed.length === 1 ? "question" : "questions"}
+          {filter !== "All" ? `  ·  ${filter}` : ""}
+        </Text>
+
+        {/* Sort picker */}
+        <View style={{ position: "relative" }}>
+          <TouchableOpacity
+            onPress={() => setShowSort(p => !p)}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 5,
+              backgroundColor: C.bg3, paddingHorizontal: 10, paddingVertical: 5,
+              borderRadius: R.sm, borderWidth: 1, borderColor: C.border,
+            }}
+          >
+            <Text style={{ color: C.t2, fontSize: 12, fontWeight: "600" }}>{sort}</Text>
+            <Text style={{ color: C.t3, fontSize: 10 }}>{showSort ? "▲" : "▼"}</Text>
+          </TouchableOpacity>
+          {showSort && (
+            <View style={{
+              position: "absolute", right: 0, top: 32, zIndex: 999,
+              backgroundColor: C.bg2, borderRadius: R.md,
+              borderWidth: 1, borderColor: C.border,
+              minWidth: 130, overflow: "hidden",
+              shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.4, shadowRadius: 8, elevation: 12,
+            }}>
+              {SORT_OPTIONS.map((opt, i) => (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => { setSort(opt); setShowSort(false); }}
+                  style={{
+                    paddingHorizontal: S.md, paddingVertical: 11,
+                    borderBottomWidth: i < SORT_OPTIONS.length - 1 ? 1 : 0,
+                    borderBottomColor: C.border,
+                    backgroundColor: sort === opt ? C.accentDim : "transparent",
+                  }}
+                >
+                  <Text style={{ color: sort === opt ? C.accent : C.t2, fontSize: 13, fontWeight: sort === opt ? "700" : "400" }}>
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
-      {/* Header */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+    <View style={{ flex: 1, backgroundColor: C.bg0 }}>
+
+      {/* ── App header ─────────────────────────────────────── */}
+      <View style={{
+        backgroundColor: C.bg1,
+        paddingHorizontal: S.lg,
+        paddingTop: 50,
+        paddingBottom: S.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: C.border,
+      }}>
+        {/* Title + avatar */}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: S.lg }}>
           <View>
-            <Text style={{ color: "white", fontSize: 24, fontWeight: "bold" }}>CampusQuery</Text>
-            <Text style={{ color: "#64748B", fontSize: 11 }}>Ask · Answer · Learn</Text>
+            <Text style={{ ...T.h2, letterSpacing: -0.3 }}>CampusQuery</Text>
+            <Text style={T.small}>Ask · Answer · Learn</Text>
           </View>
-          {/* Avatar shows real user initials */}
-          <TouchableOpacity
-            style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: "#6366F1", alignItems: "center", justifyContent: "center" }}
-            onPress={() => router.push("/(tabs)/profile" as any)}
-          >
-            <Text style={{ color: "white", fontWeight: "bold", fontSize: 14 }}>{userName}</Text>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/profile" as any)}>
+            <Avatar name={initials || "U"} size={38} />
           </TouchableOpacity>
         </View>
 
         {/* Search */}
-        <View style={{ marginTop: 16, backgroundColor: "#1E293B", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#334155" }}>
-          <Text style={{ color: "#64748B", marginRight: 8, fontSize: 15 }}>🔍</Text>
+        <View style={{
+          flexDirection: "row", alignItems: "center",
+          backgroundColor: C.bg2, borderRadius: R.md,
+          paddingHorizontal: S.md, borderWidth: 1, borderColor: C.border,
+        }}>
+          <Text style={{ color: C.t3, fontSize: 16, marginRight: 6 }}>🔍</Text>
           <TextInput
-            style={{ flex: 1, color: "white", fontSize: 14 }}
-            placeholder="Search queries, tags, subjects..."
-            placeholderTextColor="#475569"
+            style={{ flex: 1, color: C.t1, fontSize: 14, paddingVertical: 10 }}
+            placeholder="Search questions, tags, subjects…"
+            placeholderTextColor={C.t3}
             value={search}
             onChangeText={setSearch}
+            returnKeyType="search"
           />
           {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")}>
-              <Text style={{ color: "#64748B", fontSize: 15 }}>✕</Text>
+            <TouchableOpacity onPress={() => setSearch("")} style={{ padding: 4 }}>
+              <Text style={{ color: C.t3, fontSize: 15 }}>✕</Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Subject chips */}
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={SUBJECTS}
-        keyExtractor={(item) => item}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 8 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => setSelectedSubject(item)}
-            style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, borderWidth: 1, backgroundColor: selectedSubject === item ? "#6366F1" : "transparent", borderColor: selectedSubject === item ? "#6366F1" : "#334155" }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: "700", color: selectedSubject === item ? "white" : "#94A3B8" }}>
-              {item}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
-
-      {/* Count */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
-        <Text style={{ color: "#64748B", fontSize: 12 }}>{filtered.length} queries</Text>
+      {/* ── Subject filter chips ───────────────────────────── */}
+      <View style={{ borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={FILTERS}
+          keyExtractor={i => i}
+          contentContainerStyle={{ paddingHorizontal: S.lg, paddingVertical: S.sm, gap: 8 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              onPress={() => setFilter(item)}
+              style={{
+                paddingHorizontal: 14, paddingVertical: 6,
+                borderRadius: R.full, borderWidth: 1.5,
+                backgroundColor: filter === item ? C.accent : "transparent",
+                borderColor: filter === item ? C.accent : C.border,
+              }}
+            >
+              <Text style={{
+                fontSize: 12, fontWeight: "700",
+                color: filter === item ? "#fff" : C.t3,
+              }}>
+                {item}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
       </View>
 
-      {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <QueryCard query={item} />}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 80 }}>
-            <Text style={{ fontSize: 48, marginBottom: 12 }}>🔍</Text>
-            <Text style={{ color: "white", fontWeight: "bold", fontSize: 18 }}>No results found</Text>
-            <Text style={{ color: "#94A3B8", fontSize: 13, marginTop: 6, textAlign: "center" }}>
-              Try a different search term or subject
-            </Text>
-          </View>
-        }
-      />
+      {/* ── Feed ────────────────────────────────────────────── */}
+      <Pressable style={{ flex: 1 }} onPress={() => setShowSort(false)}>
+        <FlatList
+          data={processed}
+          keyExtractor={q => q.id}
+          renderItem={({ item }) => (
+            <QuestionCard
+              question={item}
+              voted={!!votes[item.id]}
+              onPress={() => router.push(`/query/${item.id}` as any)}
+              onVote={() => setVotes(v => ({ ...v, [item.id]: !v[item.id] }))}
+            />
+          )}
+          contentContainerStyle={{ paddingHorizontal: S.lg, paddingTop: S.md, paddingBottom: 130 }}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={ListHeader}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />
+          }
+          ListEmptyComponent={
+            <EmptyState
+              emoji="🔍"
+              title="No questions found"
+              body={search ? `No results for "${search}"` : "Be the first to post a question!"}
+              action={search ? "Clear search" : "Ask a Question"}
+              onAction={search ? () => setSearch("") : () => router.push("/(tabs)/ask" as any)}
+            />
+          }
+        />
+      </Pressable>
     </View>
   );
 }
