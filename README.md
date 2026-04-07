@@ -1,50 +1,195 @@
-# Welcome to your Expo app 👋
+# 📱 CampusQuery
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**CampusQuery** is a modern student community platform where users can **ask questions, share knowledge, and collaborate with peers** within their campus.
 
-## Get started
+It provides a clean, intuitive interface for managing academic and campus-related queries with real-time updates and personalized user experience.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## ✨ Tagline
 
-2. Start the app
+**Ask. Connect. Resolve.**
 
-   ```bash
-   npx expo start
-   ```
+---
 
-In the output, you'll find options to open the app in a
+## 🚀 Key Features
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### 🔐 Authentication & User System
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+* Secure **email & password authentication**
+* 📧 Email verification support
+* User profile with:
 
-## Get a fresh project
+  * Name, college, department
+  * Activity stats (questions, answers, saved)
 
-When you're ready, run:
+---
 
-```bash
-npm run reset-project
+### ❓ Query Management
+
+* Create detailed queries with:
+
+  * Title
+  * Subject/category selection
+  * Description
+* View all queries in **community feed**
+* Filter queries by subjects
+* Search queries by keywords/tags
+
+---
+
+### 💬 Interaction System
+
+* Answer questions
+* View responses in real-time
+* Community-driven knowledge sharing
+
+---
+
+### 🔔 Notification System
+
+* Get notified when:
+
+  * Someone answers your question
+  * Activity happens on your posts
+* Dedicated **Alerts screen**
+* Smart empty state UI
+
+---
+
+### 📂 Personal Dashboard
+
+* Track:
+
+  * My Questions
+  * My Answers
+  * Saved Queries
+* Clean profile overview with stats
+
+---
+
+### ⚙️ Settings & Personalization
+
+* Toggle:
+
+  * Push notifications
+  * Compact mode
+  * Hide solved questions
+* Save user preferences
+
+---
+
+### 🎨 UI/UX Highlights
+
+* Dark modern UI with gradients
+* Clean card-based design
+* Smooth navigation (tab-based)
+* Thoughtful empty states
+* Consistent design system
+
+---
+
+## 🛠️ Tech Stack
+
+### 📱 Frontend
+
+* React Native (Expo)
+* Expo Router (File-based navigation)
+* TypeScript
+
+### 🎨 Styling
+
+* NativeWind (Tailwind CSS for React Native)
+
+### 🔥 Backend
+
+* Firebase Authentication
+* Firebase Firestore (Real-time database)
+
+### 📦 Utilities
+
+* AsyncStorage
+* Custom state management
+
+---
+
+## 📂 Project Structure
+
+```
+CampusQuery/
+│
+├── app/
+│   ├── (auth)/          # Login & Signup
+│   ├── (tabs)/          # Bottom tab navigation
+│   ├── query/           # Query screens
+│   ├── _layout.tsx
+│   └── index.tsx
+│
+├── components/          # Reusable UI
+├── firebase/
+│   ├── auth.ts
+│   ├── config.ts
+│   ├── questions.ts
+│   ├── notifications.ts
+│
+├── store/
+├── assets/
+│
+└── config files
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## ⚙️ Setup Instructions
 
-To learn more about developing your project with Expo, look at the following resources:
+### 1. Clone the repo
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+git clone https://github.com/KhushiChaudhary03/Student_query_management_system.git
+cd Student_query_management_system
+```
 
-## Join the community
+### 2. Install dependencies
 
-Join our community of developers creating universal apps.
+```bash
+npm install
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### 3. Add environment variables
+
+Create `.env` file:
+
+```env
+EXPO_PUBLIC_FIREBASE_API_KEY=your_api_key
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
+```
+
+### 4. Run the app
+
+```bash
+npx expo start
+```
+
+---
+
+
+## 🚀 Future Improvements
+
+* 📷 Image upload in queries
+* 👍 Upvote / like system
+* 🧠 AI-based answer suggestions
+* 🔍 Advanced search & filters
+* 🌙 Dark/Light mode toggle
+
+---
+
+## 👩‍💻 Author
+
+**Khushi**
+GitHub: https://github.com/KhushiChaudhary03
+
+
