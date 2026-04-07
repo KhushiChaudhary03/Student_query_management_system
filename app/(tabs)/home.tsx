@@ -1,54 +1,84 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
-  View, Text, FlatList, TextInput, TouchableOpacity,
-  RefreshControl, Pressable,
+  View,
+  Text,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  RefreshControl,
+  Modal,
+  Pressable,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { C, R, S, T } from "../../components/theme";
 import QuestionCard from "../../components/QuestionCard";
 import EmptyState from "../../components/EmptyState";
 import { Avatar } from "../../components/Atoms";
+import PressableScale from "../../components/PressableScale";
+import BrandedLoader from "../../components/BrandedLoader";
 import { Question } from "../../components/types";
-import { SEED_QUESTIONS } from "../../store/data";
+import { fetchQuestions, voteQuestion } from "../../firebase/questions";
+import { currentUser, getUserProfile } from "../../firebase/auth";
+import { AppSettings, DEFAULT_SETTINGS, subscribeToAppSettings } from "../../store/settings";
+import { SavedQuestion, subscribeToSavedQuestions, toggleSavedQuestion } from "../../store/savedQuestions";
 
 const FILTERS = [
-  "All",
-  "Mathematics",
-  "Computer Science",
-  "Data Structures",
-  "Computer Networks",
-  "Electrical Engineering",
-  "Physics",
-  "Economics",
+  "All", "Mathematics", "Computer Science", "Data Structures",
+  "Computer Networks", "Electrical Engineering", "Physics", "Economics",
 ];
+const SORT_OPTIONS = ["Newest", "Most Voted", "Unanswered"] as const;
+type SortOption = typeof SORT_OPTIONS[number];
 
-const SORT_OPTIONS = ["Newest", "Most Voted", "Unanswered"];
+function toSavedQuestion(question: Question): SavedQuestion {
+  return {
+    id: question.id,
+    title: question.title,
+    subject: question.subject,
+    college: question.college,
+    createdAt: question.createdAt,
+    answers: question.answers,
+    votes: question.votes,
+  };
+}
 
 export default function HomeScreen() {
-  const [questions, setQuestions]   = useState<Question[]>(SEED_QUESTIONS);
-  const [search,    setSearch]      = useState("");
-  const [filter,    setFilter]      = useState("All");
-  const [sort,      setSort]        = useState("Newest");
-  const [showSort,  setShowSort]    = useState(false);
-  const [initials,  setInitials]    = useState("?");
-  const [votes,     setVotes]       = useState<Record<string, boolean>>({});
-  const [refreshing,setRefreshing]  = useState(false);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("All");
+  const [sort, setSort] = useState<SortOption>("Newest");
+  const [showSort, setShowSort] = useState(false);
+  const [initials, setInitials] = useState("?");
+  const [votes, setVotes] = useState<Record<string, boolean>>({});
+  const [savedIds, setSavedIds] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   const load = useCallback(async () => {
-    const u = await AsyncStorage.getItem("user");
-    if (u) {
-      const user = JSON.parse(u);
-      setInitials(
-        user.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "?"
-      );
+    try {
+      const user = currentUser();
+      if (user) {
+        const profile = await getUserProfile(user.uid);
+        const name = profile?.name || user.displayName || "?";
+        setInitials(name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2));
+      }
+      const data = await fetchQuestions(50);
+      setQuestions(data);
+    } catch (e) {
+      console.error("Failed to load questions:", e);
+    } finally {
+      setLoading(false);
     }
-    const q = await AsyncStorage.getItem("questions");
-    const userQ: Question[] = q ? JSON.parse(q) : [];
-    setQuestions([...userQ, ...SEED_QUESTIONS]);
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useEffect(() => subscribeToAppSettings(setSettings), []);
+  useEffect(() => subscribeToSavedQuestions(items => {
+    const next: Record<string, boolean> = {};
+    items.forEach(item => { next[item.id] = true; });
+    setSavedIds(next);
+  }), []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -56,7 +86,30 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  // Filter + sort
+  const handleVote = async (questionId: string) => {
+    const alreadyVoted = !!votes[questionId];
+    setVotes(v => ({ ...v, [questionId]: !alreadyVoted }));
+    setQuestions(qs => qs.map(q =>
+      q.id === questionId
+        ? { ...q, votes: q.votes + (alreadyVoted ? -1 : 1) }
+        : q,
+    ));
+    try {
+      await voteQuestion(questionId, alreadyVoted ? -1 : 1);
+    } catch {
+      setVotes(v => ({ ...v, [questionId]: alreadyVoted }));
+      setQuestions(qs => qs.map(q =>
+        q.id === questionId
+          ? { ...q, votes: q.votes + (alreadyVoted ? 1 : -1) }
+          : q,
+      ));
+    }
+  };
+
+  const handleToggleSave = async (question: Question) => {
+    await toggleSavedQuestion(toSavedQuestion(question));
+  };
+
   const processed = questions
     .filter(q => {
       const s = search.toLowerCase();
@@ -64,139 +117,105 @@ export default function HomeScreen() {
         || q.title.toLowerCase().includes(s)
         || q.body.toLowerCase().includes(s)
         || q.tags.some(t => t.toLowerCase().includes(s))
-        || q.author.toLowerCase().includes(s)
+        || q.authorName.toLowerCase().includes(s)
         || q.subject.toLowerCase().includes(s);
       const matchFilter = filter === "All" || q.subject === filter;
-      return matchSearch && matchFilter;
+      const matchSolved = !settings.hideSolvedQuestions || !(q.answers > 0 || q.answersList?.some(a => a.isAccepted));
+      return matchSearch && matchFilter && matchSolved;
     })
     .sort((a, b) => {
-      if (sort === "Most Voted")  return b.votes - a.votes;
-      if (sort === "Unanswered")  return a.answers - b.answers;
-      return 0; // Newest — already ordered newest first
+      if (sort === "Most Voted") return b.votes - a.votes;
+      if (sort === "Unanswered") return a.answers - b.answers;
+      return 0;
     });
+
+  const SortModal = (
+    <Modal transparent visible={showSort} animationType="fade" onRequestClose={() => setShowSort(false)}>
+      <Pressable style={{ flex: 1 }} onPress={() => setShowSort(false)}>
+        <View style={{ position: "absolute", top: 148, right: S.lg, backgroundColor: C.bg2, borderRadius: R.md, borderWidth: 1, borderColor: C.border, minWidth: 150, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 12 }}>
+          {SORT_OPTIONS.map((opt, i) => (
+            <TouchableOpacity key={opt} onPress={() => { setSort(opt); setShowSort(false); }} style={{ paddingHorizontal: S.lg, paddingVertical: 13, borderBottomWidth: i < SORT_OPTIONS.length - 1 ? 1 : 0, borderBottomColor: C.border, backgroundColor: sort === opt ? C.cyanDim : "transparent", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ color: sort === opt ? C.cyan : C.t1, fontSize: 14, fontWeight: sort === opt ? "700" : "400" }}>{opt}</Text>
+              {sort === opt && <Ionicons name="checkmark" size={16} color={C.cyan} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Pressable>
+    </Modal>
+  );
 
   const ListHeader = (
     <View>
-      {/* ── Ask CTA banner ─────────────────────────────────── */}
-      <TouchableOpacity
+      <View style={{ marginBottom: settings.compactMode ? S.md : S.lg }}>
+        <Text style={{ ...T.h1, fontSize: 30, marginBottom: 6 }}>CampusQuery</Text>
+        <Text style={{ color: C.t2, fontSize: 14, fontWeight: "500" }}>Ask. Connect. Resolve.</Text>
+      </View>
+
+      <PressableScale
         onPress={() => router.push("/(tabs)/ask" as any)}
-        activeOpacity={0.85}
+        activeScale={0.98}
         style={{
-          backgroundColor: C.accentDim,
-          borderRadius: R.lg,
+          backgroundColor: C.bg2,
+          borderRadius: 22,
           borderWidth: 1,
-          borderColor: C.accent + "40",
-          padding: S.lg,
-          marginBottom: S.lg,
+          borderColor: C.rose + "35",
+          padding: settings.compactMode ? S.md : S.lg,
+          marginBottom: settings.compactMode ? S.md : S.lg,
           flexDirection: "row",
           alignItems: "center",
           gap: S.md,
+          shadowColor: "#020817",
+          shadowOpacity: 0.22,
+          shadowOffset: { width: 0, height: 10 },
+          shadowRadius: 18,
+          elevation: 5,
         }}
       >
-        <View style={{
-          width: 42, height: 42, borderRadius: R.md,
-          backgroundColor: C.accent,
-          alignItems: "center", justifyContent: "center",
-          flexShrink: 0,
-        }}>
-          <Text style={{ fontSize: 20 }}>✏️</Text>
+        <View style={{ width: 46, height: 46, borderRadius: 16, backgroundColor: C.rose, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="create-outline" size={22} color="#fff" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: C.t1, fontSize: 14, fontWeight: "700", marginBottom: 2 }}>
-            Have a question?
-          </Text>
-          <Text style={{ color: C.t3, fontSize: 12 }}>
-            Ask the community — get answers fast
-          </Text>
+          <Text style={{ color: C.t1, fontSize: 15, fontWeight: "800", marginBottom: 2 }}>Have a question?</Text>
+          <Text style={{ color: C.t2, fontSize: 12 }}>Start a thread and get help from your campus network.</Text>
         </View>
-        <Text style={{ color: C.accent, fontSize: 20 }}>→</Text>
-      </TouchableOpacity>
+        <Ionicons name="arrow-forward" size={18} color={C.rose} />
+      </PressableScale>
 
-      {/* ── Sort + count row ───────────────────────────────── */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: S.sm }}>
         <Text style={{ ...T.label, color: C.t3 }}>
           {processed.length} {processed.length === 1 ? "question" : "questions"}
-          {filter !== "All" ? `  ·  ${filter}` : ""}
+          {filter !== "All" ? `  �  ${filter}` : ""}
+          {settings.hideSolvedQuestions ? "  �  unsolved only" : ""}
         </Text>
-
-        {/* Sort picker */}
-        <View style={{ position: "relative" }}>
-          <TouchableOpacity
-            onPress={() => setShowSort(p => !p)}
-            style={{
-              flexDirection: "row", alignItems: "center", gap: 5,
-              backgroundColor: C.bg3, paddingHorizontal: 10, paddingVertical: 5,
-              borderRadius: R.sm, borderWidth: 1, borderColor: C.border,
-            }}
-          >
-            <Text style={{ color: C.t2, fontSize: 12, fontWeight: "600" }}>{sort}</Text>
-            <Text style={{ color: C.t3, fontSize: 10 }}>{showSort ? "▲" : "▼"}</Text>
-          </TouchableOpacity>
-          {showSort && (
-            <View style={{
-              position: "absolute", right: 0, top: 32, zIndex: 999,
-              backgroundColor: C.bg2, borderRadius: R.md,
-              borderWidth: 1, borderColor: C.border,
-              minWidth: 130, overflow: "hidden",
-              shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.4, shadowRadius: 8, elevation: 12,
-            }}>
-              {SORT_OPTIONS.map((opt, i) => (
-                <TouchableOpacity
-                  key={opt}
-                  onPress={() => { setSort(opt); setShowSort(false); }}
-                  style={{
-                    paddingHorizontal: S.md, paddingVertical: 11,
-                    borderBottomWidth: i < SORT_OPTIONS.length - 1 ? 1 : 0,
-                    borderBottomColor: C.border,
-                    backgroundColor: sort === opt ? C.accentDim : "transparent",
-                  }}
-                >
-                  <Text style={{ color: sort === opt ? C.accent : C.t2, fontSize: 13, fontWeight: sort === opt ? "700" : "400" }}>
-                    {opt}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
+        <TouchableOpacity onPress={() => setShowSort(p => !p)} style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.bgSoft, paddingHorizontal: 10, paddingVertical: 6, borderRadius: R.sm, borderWidth: 1, borderColor: C.border }}>
+          <Text style={{ color: C.t2, fontSize: 12, fontWeight: "600" }}>{sort}</Text>
+          <Ionicons name={showSort ? "chevron-up" : "chevron-down"} size={12} color={C.t3} />
+        </TouchableOpacity>
       </View>
     </View>
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg0 }}>
+      {SortModal}
 
-      {/* ── App header ─────────────────────────────────────── */}
-      <View style={{
-        backgroundColor: C.bg1,
-        paddingHorizontal: S.lg,
-        paddingTop: 50,
-        paddingBottom: S.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: C.border,
-      }}>
-        {/* Title + avatar */}
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: S.lg }}>
+      <View style={{ backgroundColor: C.bg1, paddingHorizontal: S.lg, paddingTop: 50, paddingBottom: S.lg, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: settings.compactMode ? S.md : S.lg }}>
           <View>
-            <Text style={{ ...T.h2, letterSpacing: -0.3 }}>CampusQuery</Text>
-            <Text style={T.small}>Ask · Answer · Learn</Text>
+            <Text style={{ color: C.t3, fontSize: 12, fontWeight: "700", letterSpacing: 1.2, textTransform: "uppercase" }}>Community Feed</Text>
+            <Text style={{ ...T.small, color: C.t2, marginTop: 4 }}>
+              {settings.hideSolvedQuestions ? "Showing open questions only." : "Your latest campus discussions, all in one place."}
+            </Text>
           </View>
           <TouchableOpacity onPress={() => router.push("/(tabs)/profile" as any)}>
-            <Avatar name={initials || "U"} size={38} />
+            <Avatar name={initials || "U"} size={42} />
           </TouchableOpacity>
         </View>
-
-        {/* Search */}
-        <View style={{
-          flexDirection: "row", alignItems: "center",
-          backgroundColor: C.bg2, borderRadius: R.md,
-          paddingHorizontal: S.md, borderWidth: 1, borderColor: C.border,
-        }}>
-          <Text style={{ color: C.t3, fontSize: 16, marginRight: 6 }}>🔍</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.bgSoft, borderRadius: 16, paddingHorizontal: S.md, borderWidth: 1, borderColor: C.borderLight }}>
+          <Ionicons name="search" size={16} color={C.t3} style={{ marginRight: 6 }} />
           <TextInput
-            style={{ flex: 1, color: C.t1, fontSize: 14, paddingVertical: 10 }}
-            placeholder="Search questions, tags, subjects…"
+            style={{ flex: 1, color: C.t1, fontSize: 14, paddingVertical: 12 }}
+            placeholder="Search questions, tags, subjects..."
             placeholderTextColor={C.t3}
             value={search}
             onChangeText={setSearch}
@@ -204,43 +223,45 @@ export default function HomeScreen() {
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch("")} style={{ padding: 4 }}>
-              <Text style={{ color: C.t3, fontSize: 15 }}>✕</Text>
+              <Ionicons name="close" size={15} color={C.t3} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* ── Subject filter chips ───────────────────────────── */}
       <View style={{ borderBottomWidth: 1, borderBottomColor: C.border }}>
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
           data={FILTERS}
           keyExtractor={i => i}
-          contentContainerStyle={{ paddingHorizontal: S.lg, paddingVertical: S.sm, gap: 8 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => setFilter(item)}
-              style={{
-                paddingHorizontal: 14, paddingVertical: 6,
-                borderRadius: R.full, borderWidth: 1.5,
-                backgroundColor: filter === item ? C.accent : "transparent",
-                borderColor: filter === item ? C.accent : C.border,
-              }}
-            >
-              <Text style={{
-                fontSize: 12, fontWeight: "700",
-                color: filter === item ? "#fff" : C.t3,
-              }}>
-                {item}
-              </Text>
-            </TouchableOpacity>
-          )}
+          contentContainerStyle={{ paddingHorizontal: S.lg, paddingVertical: settings.compactMode ? S.xs : S.sm, gap: 8 }}
+          renderItem={({ item }) => {
+            const activeColor = item === "Mathematics" ? C.sun : item === "Physics" ? C.cyan : item === "Economics" ? C.accentAlt : C.accent;
+            const selected = filter === item;
+            return (
+              <PressableScale
+                onPress={() => setFilter(item)}
+                activeScale={0.96}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: R.full,
+                  borderWidth: 1.5,
+                  backgroundColor: selected ? activeColor : C.bgSoft,
+                  borderColor: selected ? activeColor : C.border,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "700", color: selected ? "#fff" : C.t2 }}>{item}</Text>
+              </PressableScale>
+            );
+          }}
         />
       </View>
 
-      {/* ── Feed ────────────────────────────────────────────── */}
-      <Pressable style={{ flex: 1 }} onPress={() => setShowSort(false)}>
+      {loading ? (
+        <BrandedLoader title="Loading the feed" subtitle="Pulling in fresh campus questions for you." />
+      ) : (
         <FlatList
           data={processed}
           keyExtractor={q => q.id}
@@ -248,27 +269,54 @@ export default function HomeScreen() {
             <QuestionCard
               question={item}
               voted={!!votes[item.id]}
+              saved={!!savedIds[item.id]}
+              compact={settings.compactMode}
               onPress={() => router.push(`/query/${item.id}` as any)}
-              onVote={() => setVotes(v => ({ ...v, [item.id]: !v[item.id] }))}
+              onVote={() => handleVote(item.id)}
+              onToggleSave={() => handleToggleSave(item)}
             />
           )}
-          contentContainerStyle={{ paddingHorizontal: S.lg, paddingTop: S.md, paddingBottom: 130 }}
+          contentContainerStyle={{ paddingHorizontal: S.lg, paddingTop: settings.compactMode ? S.sm : S.md, paddingBottom: 150 }}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={ListHeader}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
           ListEmptyComponent={
             <EmptyState
-              emoji="🔍"
-              title="No questions found"
-              body={search ? `No results for "${search}"` : "Be the first to post a question!"}
+              icon={settings.hideSolvedQuestions ? "checkmark-done-outline" : undefined}
+              emoji={settings.hideSolvedQuestions ? undefined : (search ? "\u{1F50E}" : "\u{1F4AD}")}
+              title={search ? "No results found" : settings.hideSolvedQuestions ? "No open questions" : "No questions yet"}
+              body={search ? `No results for "${search}"` : settings.hideSolvedQuestions ? "Every visible question is already solved. Turn the filter off in settings to see all threads." : "Be the first to ask a question!"}
               action={search ? "Clear search" : "Ask a Question"}
               onAction={search ? () => setSearch("") : () => router.push("/(tabs)/ask" as any)}
             />
           }
         />
-      </Pressable>
+      )}
+
+      <PressableScale
+        onPress={() => router.push("/(tabs)/ask" as any)}
+        activeScale={0.96}
+        style={{
+          position: "absolute",
+          right: S.lg,
+          bottom: 92,
+          backgroundColor: C.rose,
+          borderRadius: 999,
+          paddingHorizontal: 18,
+          paddingVertical: 14,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          shadowColor: C.rose,
+          shadowOpacity: 0.38,
+          shadowOffset: { width: 0, height: 10 },
+          shadowRadius: 18,
+          elevation: 8,
+        }}
+      >
+        <Ionicons name="add" size={18} color="#fff" />
+        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "800" }}>Ask Query</Text>
+      </PressableScale>
     </View>
   );
 }
